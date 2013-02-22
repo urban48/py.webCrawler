@@ -5,19 +5,18 @@ import logging
 import urllib.request, urllib.error, urllib.parse
 import queue
 import threading
-import sys
 import time
 import os
 from time import strftime
 import msvcrt
 from lxml.html import parse
-import io
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.ERROR)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-u',type=str , help='start url',  required=True)
 parser.add_argument('-t', type=int ,  help='number of threads',  required=True)
+parser.add_argument('-l', type=int ,  help='set depth level',  required=False)
 args = vars(parser.parse_args())
 
 #---------------------global vars ---------------------------------
@@ -52,13 +51,23 @@ Pimg_counter = 0
 #img hit counter
 ImgHit_counter = 0
 
+#set up crawl depth lvl
+if(args['l'] is None):
+    crawl_level = 0
+else:
+    crawl_level = args['l']
+    
+#sets the number of threads that will be runing   
 thread_count = args['t']
 
 start_time = time.time()
 
+#sets the path of the debug logs
 #log_path ='C:\\Users\\Urban\\Documents\\Projects\\Python\\mpwc\\'
 #log_path = "C:\\srg\\projects\\python\\web crawler\\"
+log_path = 'c:\\webc\logs\\'
 
+#clears the log files
 with open(log_path + 'report_full_img_list.txt', 'w') as f:
    f.write('')
 with open(log_path + 'report_full_link_list.txt', 'w') as f:
@@ -70,11 +79,12 @@ with open(log_path + 'report_dup_img_list.txt', 'w') as f:
 with open(log_path + 'report_error_retrive_img.txt', 'a') as f:
    f.write('')
 
-
+#debug counters
 img_added = 0
 dup_links = 0
 dup_images = 0
 
+#hex trings that may indicate that the image contains archive inside
 zip_hex_pat ="\\x50\\x48\\x03\\x04\\x0A\\x00\\x00\\x00\\x00\\x00\\x00"
 rar_hex_pat = "\\x52\\x61\\x72\\x21\\x0A\\x07\\x00\\xCF\\x90\\x73\\x00\\x00\\x0D\\x00\\x00\\x00"
 
@@ -84,10 +94,8 @@ rar_hex_pat = "\\x52\\x61\\x72\\x21\\x0A\\x07\\x00\\xCF\\x90\\x73\\x00\\x00\\x0D
 class Crawler(object):
 
     def __init__(self,  depth=0):
-        #self.root = init_url
         self.depth = depth
-
-    
+   
     def isValidUrl(self,url):
         try:
            req = urllib.request.urlopen(url)
@@ -265,36 +273,52 @@ class ImagAnalizer(object):
             
 
 class CrawlerWorker(threading.Thread):
+
     def __init__(self):
         threading.Thread.__init__(self)
         self.crawler = Crawler()
         self.flag = True
+        global crawl_level
+        self.depth_counter = 0
+        
 
     def run(self):
         sleep_counter = 0
         while(self.flag):
-            if(not Ulinks_Q.empty()):
-                link = Ulinks_Q.get()
-                #check if link in the proccessed queue
-                try:
-                    Plinks_L.index(link)
-                except ValueError:
-                    #check url validity
-                    self.crawler.retrivePageData(link)
-                           
-                else:
-                    logging.debug("link already in proccessed list - " + link)
-
+            if(crawl_level == 0)
+                self.crawl()
+            elif:
+                if(self.depth_counter < crawl_level):
+                    self.crawl()
             else:
-                #time out exit
-                if(sleep_counter > 10):
-                    self.stop()
-                    logging.info('CrawlerWorker thread time out')
-                #wait for 1 second and check the Queue again if empty
-                time.sleep(1)
-                sleep_counter +=1
-                
+                logging.info('crawl_level reached, stopping thread')
+                self.stop()
 
+                
+    def crawl(self):
+        if(not Ulinks_Q.empty()):
+            link = Ulinks_Q.get()
+            #check if link in the proccessed queue
+            try:
+                Plinks_L.index(link)
+            except ValueError:
+                #check url validity
+                self.crawler.retrivePageData(link)
+                self.depth_counter +=1
+                       
+            else:
+                logging.debug("link already in proccessed list - " + link)
+
+        else:
+            #time out exit
+            if(sleep_counter > 10):
+                self.stop()
+                logging.info('CrawlerWorker thread time out')
+            #wait for 1 second and check the Queue again if empty
+            time.sleep(1)
+            sleep_counter +=1
+            
+     
     def stop(self):
         self.flag = False
         logging.debug('CrawlerWorker thread stopped')
@@ -393,8 +417,8 @@ statDisplyThread.start()
 
 #insert the root url into the queue
 c = Crawler()
-#retrive page date from lvl 0
-c.retrivePageData(args['u'])
+#retrive page date the given page
+c.retrivePageData(args['u'], 1)
 
 
 
