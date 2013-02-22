@@ -56,7 +56,7 @@ thread_count = args['t']
 
 start_time = time.time()
 
-log_path ='C:\\Users\\Urban\\Documents\\Projects\\Python\\mpwc\\'
+#log_path ='C:\\Users\\Urban\\Documents\\Projects\\Python\\mpwc\\'
 #log_path = "C:\\srg\\projects\\python\\web crawler\\"
 
 with open(log_path + 'report_full_img_list.txt', 'w') as f:
