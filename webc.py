@@ -5,18 +5,20 @@ import logging
 import urllib.request, urllib.error, urllib.parse
 import queue
 import threading
+import sys
 import time
 import os
 from time import strftime
 import msvcrt
 from lxml.html import parse
+import io
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.ERROR)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-u',type=str , help='start url',  required=True)
-parser.add_argument('-t', type=int ,  help='number of threads',  required=True)
-parser.add_argument('-l', type=int ,  help='set depth level',  required=False)
+parser.add_argument('-u',type=str , help='start url', required=True)
+parser.add_argument('-t', type=int , help='number of threads', required=True)
+parser.add_argument('-l', type=int , help='depth level (0 is infinit)', required=True)
 args = vars(parser.parse_args())
 
 #---------------------global vars ---------------------------------
@@ -33,8 +35,14 @@ Uimg_Q = queue.Queue()#SetQueue(0)
 #list that holds image urls that been procceced
 Pimg_L = []
 
-#defult 
+#root url
 init_url = args['u']
+
+#set the depth level
+if(args['l'] is None):
+    crawl_depth = 1
+else:
+    crawl_depth = args['l']
 
 #list that holds results
 ImgHit_L = []
@@ -51,23 +59,16 @@ Pimg_counter = 0
 #img hit counter
 ImgHit_counter = 0
 
-#set up crawl depth lvl
-if(args['l'] is None):
-    crawl_level = 0
-else:
-    crawl_level = args['l']
-    
-#sets the number of threads that will be runing   
 thread_count = args['t']
 
 start_time = time.time()
 
-#sets the path of the debug logs
 #log_path ='C:\\Users\\Urban\\Documents\\Projects\\Python\\mpwc\\'
 #log_path = "C:\\srg\\projects\\python\\web crawler\\"
-log_path = 'c:\\webc\logs\\'
+log_path = 'c:\\webc\\logs\\'
+if not os.path.exists(log_path):
+    os.makedirs(log_path)
 
-#clears the log files
 with open(log_path + 'report_full_img_list.txt', 'w') as f:
    f.write('')
 with open(log_path + 'report_full_link_list.txt', 'w') as f:
@@ -79,23 +80,24 @@ with open(log_path + 'report_dup_img_list.txt', 'w') as f:
 with open(log_path + 'report_error_retrive_img.txt', 'a') as f:
    f.write('')
 
-#debug counters
+
 img_added = 0
 dup_links = 0
 dup_images = 0
 
-#hex trings that may indicate that the image contains archive inside
 zip_hex_pat ="\\x50\\x48\\x03\\x04\\x0A\\x00\\x00\\x00\\x00\\x00\\x00"
 rar_hex_pat = "\\x52\\x61\\x72\\x21\\x0A\\x07\\x00\\xCF\\x90\\x73\\x00\\x00\\x0D\\x00\\x00\\x00"
 
 #---------------------global vars ---------------------------------
-	
-	
+
+
 class Crawler(object):
 
-    def __init__(self,  depth=0):
+    def __init__(self, depth=0):
+        #self.root = init_url
         self.depth = depth
-   
+
+    
     def isValidUrl(self,url):
         try:
            req = urllib.request.urlopen(url)
@@ -104,14 +106,14 @@ class Crawler(object):
             return False, url
         except urllib.error.HTTPError as e:
             if 300 < e.code < 304:
-                logging.warning(url + ' - is redirected  ')
+                logging.warning(url + ' - is redirected ')
                 u = urllib.error.HTTPError.geturl(e)
-                newUrl =  urllib.request.urljoin(url, u)
+                newUrl = urllib.request.urljoin(url, u)
                 return True, newUrl, urllib.request.urlopen(newUrl)
             if e.code == 404:
                 logging.warning(url + " - " + str(e))
                 with open(log_path + 'report_404.txt', 'a') as f:
-                    f.write(url+'\n') 
+                    f.write(url+'\n')
                 return False, url
             if e.code == 403:
                 logging.warning(url + " - " + str(e))
@@ -128,25 +130,20 @@ class Crawler(object):
 
 
 
-    def retrivePageData(self, url):
+    def retrivePageData(self, url, depth_level):
         global Plink_counter, dup_links
-        #absUrl = url;
-        absImgUrl = '';
         lock = threading.Lock()
-
-
 
         try:
             dom = parse(url).getroot()
         except IOError as e:
             logging.error('[Crawler.retrivePageData] cant parse give url - ' + str(e))
-            print('\n\n\n' + url + '\n\n\n')
             return
         else:
             Plinks_L.append(url)
             lock.acquire()
             Plink_counter +=1
-            lock.release()  
+            lock.release()
 
         if(dom is None):
             logging.debug('dom is none')
@@ -161,7 +158,6 @@ class Crawler(object):
                 
             link_adr = link.get('href')
 
-
             if(link_adr != "" and link_adr is not None):
                 
                 #ignore js links
@@ -169,9 +165,9 @@ class Crawler(object):
                     continue
                 #check if its a full link
                 if(link_adr.find('http://') != -1):
-                    absUrl = link_adr   
+                    absUrl = link_adr
                 else:
-                    absUrl = urllib.parse.urljoin(link.base_url, link_adr)  
+                    absUrl = urllib.parse.urljoin(link.base_url, link_adr)
             #href is empty
             else:
                 continue
@@ -183,10 +179,10 @@ class Crawler(object):
                 logging.info('failed to add entry to "report_full_link_list" log')
                 
 
-            try:                 
+            try:
                 Plinks_L.index(absUrl)
-            except ValueError:          
-                Ulinks_Q.put(absUrl)
+            except ValueError:
+                Ulinks_Q.put((absUrl, depth_level))
             else:
                lock.acquire()
                dup_links +=1
@@ -204,14 +200,14 @@ class Crawler(object):
             
         for img in images:
             
-            img_path = img.get('src')   
+            img_path = img.get('src')
 
             if(img_path != '' and img_path is not None):
                                         
                 if(img_path.find('http://') != -1):
-                    absImgUrl = img_path   
+                    absImgUrl = img_path
                 else:
-                    absImgUrl = urllib.parse.urljoin(img.base_url, img_path) 
+                    absImgUrl = urllib.parse.urljoin(img.base_url, img_path)
 
                 try:
                     if(absImgUrl is not None and absImgUrl != ''):
@@ -223,7 +219,7 @@ class Crawler(object):
                     lock.release()
                 else:
                     lock.acquire()
-                    dup_images +=1 
+                    dup_images +=1
                     lock.release()
                     try:
                         with open(log_path + 'report_dup_img_list.txt', 'a') as f:
@@ -233,13 +229,13 @@ class Crawler(object):
                     continue
 
 
-class ImagAnalizer(object):  
+class ImagAnalizer(object):
     
     def analize(self, img):
         global Pimg_counter, ImgHit_counter
         lock = threading.Lock()
 
-        cr = Crawler()             
+        cr = Crawler()
         result = cr.isValidUrl(img)
         
         if(result[0]):
@@ -259,11 +255,11 @@ class ImagAnalizer(object):
                 with open(log_path + 'report_error_retrive_img.txt', 'a') as f:
                     f.write(str(img)+'\n')
             except UnicodeEncodeError as e:
-                logging.info('failed to add entry to "report_dup_img_list" log')     
+                logging.info('failed to add entry to "report_dup_img_list" log')
             return
                 
         if(imgHexData.find(zip_hex_pat) != -1 or imgHexData.find(rar_hex_pat) != -1):
-            ImgHit_L.append(img)           
+            ImgHit_L.append(img)
             #access shared resource
             lock.acquire()
             ImgHit_counter +=1
@@ -273,52 +269,41 @@ class ImagAnalizer(object):
             
 
 class CrawlerWorker(threading.Thread):
-
     def __init__(self):
         threading.Thread.__init__(self)
         self.crawler = Crawler()
         self.flag = True
-        global crawl_level
-        self.depth_counter = 0
-        
 
     def run(self):
         sleep_counter = 0
         while(self.flag):
-            if(crawl_level == 0)
-                self.crawl()
-            elif:
-                if(self.depth_counter < crawl_level):
-                    self.crawl()
-            else:
-                logging.info('crawl_level reached, stopping thread')
-                self.stop()
-
+            if(not Ulinks_Q.empty()):
+                link = Ulinks_Q.get()
+                link_depth = link[1]
                 
-    def crawl(self):
-        if(not Ulinks_Q.empty()):
-            link = Ulinks_Q.get()
-            #check if link in the proccessed queue
-            try:
-                Plinks_L.index(link)
-            except ValueError:
-                #check url validity
-                self.crawler.retrivePageData(link)
-                self.depth_counter +=1
-                       
-            else:
-                logging.debug("link already in proccessed list - " + link)
+                if(crawl_depth > link_depth):
+                    #check if link in the proccessed list
+                    try:
+                        Plinks_L.index(link[0])
+                    except ValueError:
+                        #parse the next page
+                        self.crawler.retrivePageData(link[0], link_depth+1)
+                               
+                    else:
+                        logging.debug("link already in proccessed list - " + link[0])
+                else:
+                    pass
 
-        else:
-            #time out exit
-            if(sleep_counter > 10):
-                self.stop()
-                logging.info('CrawlerWorker thread time out')
-            #wait for 1 second and check the Queue again if empty
-            time.sleep(1)
-            sleep_counter +=1
-            
-     
+            else:
+                #time out exit
+                if(sleep_counter > 10):
+                    self.stop()
+                    logging.info('CrawlerWorker thread time out')
+                #wait for 1 second and check the Queue again if empty
+                time.sleep(1)
+                sleep_counter +=1
+                
+
     def stop(self):
         self.flag = False
         logging.debug('CrawlerWorker thread stopped')
@@ -339,8 +324,8 @@ class ImagAnalizerWorker(threading.Thread):
                 if(img is not None):
                     try:
                         Pimg_L.index(img)
-                    except ValueError:                     
-                        self.ImagAnalizer.analize(img)    
+                    except ValueError:
+                        self.ImagAnalizer.analize(img)
                     else:
                         logging.info("image already in proccessed list - " +img)
                 else:
@@ -417,8 +402,8 @@ statDisplyThread.start()
 
 #insert the root url into the queue
 c = Crawler()
-#retrive page date the given page
-c.retrivePageData(args['u'], 1)
+#retrive page date from lvl 0
+c.retrivePageData(args['u'],1)
 
 
 
@@ -445,12 +430,9 @@ for thread in LinkThread_holder:
 #wait for the ceawler to finish then analize the images collected
 for thread in ImgThread_holder:
     thread.join()
-'''
-result = c.isValidUrl('http://www.ynet.co.il')
-if(result[0]):
-    c.retrivePageData((result[1]).strip())
-''' 
-print('Completed at ' + strftime('%a, %d %b %Y %H:%M:%S')  + "\ntook: " + '%.2f' % (time.time() - start_time) + " seconds")
+
+
+print('Completed at ' + strftime('%a, %d %b %Y %H:%M:%S') + "\ntook: " + '%.2f' % (time.time() - start_time) + " seconds")
 
 print('\n\n\n-----stats-final-----')
 print('\nPimg_counter: ' + str(Pimg_counter))
@@ -463,17 +445,17 @@ print('\ndup_images: ' + str(dup_images))
 print ('\nUlinks_Q: ', Ulinks_Q.qsize())
 print('\n--------------------------\n')
 
-for i in range(Ulinks_Q.qsize()):
+for item in Plinks_L:
     try:
-        with open(log_path + 'report_links_left.txt', 'w') as f:
-            f.write(str(Ulinks_Q.get())+'\n')
+        with open(log_path + 'report_processed_links.txt', 'w') as f:
+            f.write(item + '\n')
     except UnicodeEncodeError as e:
         logging.info('failed to add entry to "report_links_left" log')
 
-#print('\n\n\nlinks: ' + str(Plink_counter),'\nimages:  ' + str(Pimg_counter))
+#print('\n\n\nlinks: ' + str(Plink_counter),'\nimages: ' + str(Pimg_counter))
 
 #file = open('C:\\Users\\Urban\\Desktop\\output.txt', mode='w', encoding='utf-8')
 
 #for item in Plinks_L:t
- #   file.write("%s\n" % item)
+ # file.write("%s\n" % item)
 #file.close()
