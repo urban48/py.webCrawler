@@ -22,6 +22,11 @@ args = vars(parser.parse_args())
 
 #---------------------global vars ---------------------------------
 
+
+__name__ = 'webc'
+__version__ = '0.1'
+
+
 #thread safe queue that holds the links pending crewling
 Ulinks_Q = queue.Queue()#SetQueue(0)
 

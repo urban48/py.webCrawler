@@ -1,5 +1,5 @@
 about:
-this is a multithreaded  web crawler.
+this is a multithreaded  web crawler written in python 3.2.2.
 its purpose right now is to collect images and check them if they got hidden files inside
 but that may change if i find better use for it..
 
