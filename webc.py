@@ -79,7 +79,10 @@ with open(log_path + 'report_dup_img_list.txt', 'w') as f:
    f.write('')
 with open(log_path + 'report_error_retrive_img.txt', 'w') as f:
    f.write('')
+with open(log_path + 'report_Plinks_L_list.txt', 'w') as f:
+   f.write('')
 
+#debub vars
 img_added = 0
 dup_links = 0
 dup_images = 0
@@ -291,7 +294,7 @@ class CrawlerWorker(threading.Thread):
                 link = Ulinks_Q.get()
                 link_depth = link[1]
                 
-                if(crawl_depth >= link_depth):
+                if(crawl_depth > link_depth):
                     #check if link in the proccessed list
                     try:
                         Plinks_L.index(link[0])

@@ -7,9 +7,12 @@ dependencies:
 lxml module
 
 usage:
-python webc.py  -u your url(make sure its a full url with - https/http)  -t number of threads
+python webc.py  -u your url(make sure its a full url with - https/http)  -t number of threads -; depth level (optional, defult = 1)
 
+example
+python web.py -u http://www.rootwebsite.com -t 8 -l 5
 
 keyboard control:
 q - stop the program
 s - stop the crawler threads
+l - depth level
