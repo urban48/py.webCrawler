@@ -5,13 +5,12 @@ import logging
 import urllib.request, urllib.error, urllib.parse
 import queue
 import threading
-import sys
 import time
 import os
 from time import strftime
 import msvcrt
 from lxml.html import parse
-import io
+
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.ERROR)
 
@@ -69,6 +68,7 @@ log_path = 'c:\\webc\\logs\\'
 if not os.path.exists(log_path):
     os.makedirs(log_path)
 
+#clear log file
 with open(log_path + 'report_full_img_list.txt', 'w') as f:
    f.write('')
 with open(log_path + 'report_full_link_list.txt', 'w') as f:
@@ -77,9 +77,8 @@ with open(log_path + 'report_404.txt', 'w') as f:
    f.write('')
 with open(log_path + 'report_dup_img_list.txt', 'w') as f:
    f.write('')
-with open(log_path + 'report_error_retrive_img.txt', 'a') as f:
+with open(log_path + 'report_error_retrive_img.txt', 'w') as f:
    f.write('')
-
 
 img_added = 0
 dup_links = 0
@@ -140,8 +139,19 @@ class Crawler(object):
             logging.error('[Crawler.retrivePageData] cant parse give url - ' + str(e))
             return
         else:
-            Plinks_L.append(url)
-            lock.acquire()
+            if(url not in Plinks_L):
+                Plinks_L.append(url)              
+                #write to log file for debug porpeses
+                try:
+                    with open(log_path + 'report_Plinks_L_list.txt', 'a') as f:
+                        f.write('depth level: %s --- %s\n' %(depth_level, url))
+                except UnicodeEncodeError as e:              
+                   logging.info('failed to add entry to "report_Plinks_L_list" log')
+            else:
+                logging.debug('url already in Plinks_L: ' + url )
+                return
+               
+            lock.acquire()           
             Plink_counter +=1
             lock.release()
 
@@ -281,7 +291,7 @@ class CrawlerWorker(threading.Thread):
                 link = Ulinks_Q.get()
                 link_depth = link[1]
                 
-                if(crawl_depth > link_depth):
+                if(crawl_depth >= link_depth):
                     #check if link in the proccessed list
                     try:
                         Plinks_L.index(link[0])
@@ -445,12 +455,6 @@ print('\ndup_images: ' + str(dup_images))
 print ('\nUlinks_Q: ', Ulinks_Q.qsize())
 print('\n--------------------------\n')
 
-for item in Plinks_L:
-    try:
-        with open(log_path + 'report_processed_links.txt', 'w') as f:
-            f.write(item + '\n')
-    except UnicodeEncodeError as e:
-        logging.info('failed to add entry to "report_links_left" log')
 
 #print('\n\n\nlinks: ' + str(Plink_counter),'\nimages: ' + str(Pimg_counter))
 
