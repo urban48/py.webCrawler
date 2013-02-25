@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 import os
+import sys
 from time import strftime
 import msvcrt
 from lxml.html import parse
@@ -17,36 +18,37 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 parser = argparse.ArgumentParser()
 parser.add_argument('-u',type=str , help='start url', required=True)
 parser.add_argument('-t', type=int , help='number of threads', required=True)
-parser.add_argument('-l', type=int , help='depth level (0 is infinit)', required=True)
+parser.add_argument('-l', type=int , help='depth level, default = 1 (0 is infinite)', required=False)
 args = vars(parser.parse_args())
 
 #---------------------global vars ---------------------------------
 
 
 __name__ = 'webc'
+
 __version__ = '0.1'
 
 
-#thread safe queue that holds the links pending crewling
+#thread safe queue that holds the links pending crawling
 Ulinks_Q = queue.Queue()#SetQueue(0)
 
-#list that holds links that been procceced
+#list that holds links that been processed
 Plinks_L = []
 
-#thread safe queue that holds the images pending analizing
+#thread safe queue that holds the images pending analyzing
 Uimg_Q = queue.Queue()#SetQueue(0)
 
-#list that holds image urls that been procceced
+#list that holds image urls that been processed
 Pimg_L = []
 
 #root url
 init_url = args['u']
 
 #set the depth level
-if(args['l'] is None):
-    crawl_depth = 1
-else:
-    crawl_depth = args['l']
+#if(args['l'] is None):
+ #   crawl_depth = 1
+#else:
+crawl_depth = args['l']
 
 #list that holds results
 ImgHit_L = []
@@ -54,10 +56,10 @@ ImgHit_L = []
 LinkThread_holder = []
 ImgThread_holder = []
 
-#links proccessed counter
+#links processed counter
 Plink_counter = 0
 
-#image proccessed counter
+#image processed counter
 Pimg_counter = 0
 
 #img hit counter
@@ -75,19 +77,19 @@ if not os.path.exists(log_path):
 
 #clear log file
 with open(log_path + 'report_full_img_list.txt', 'w') as f:
-   f.write('')
+    f.write('')
 with open(log_path + 'report_full_link_list.txt', 'w') as f:
-   f.write('')
+    f.write('')
 with open(log_path + 'report_404.txt', 'w') as f:
-   f.write('')
+    f.write('')
 with open(log_path + 'report_dup_img_list.txt', 'w') as f:
-   f.write('')
+    f.write('')
 with open(log_path + 'report_error_retrive_img.txt', 'w') as f:
-   f.write('')
+    f.write('')
 with open(log_path + 'report_Plinks_L_list.txt', 'w') as f:
-   f.write('')
+    f.write('')
 
-#debub vars
+#debug vars
 img_added = 0
 dup_links = 0
 dup_images = 0
@@ -107,7 +109,7 @@ class Crawler(object):
     
     def isValidUrl(self,url):
         try:
-           req = urllib.request.urlopen(url)
+            req = urllib.request.urlopen(url)
         except ValueError as e:
             logging.error(e)
             return False, url
@@ -149,12 +151,12 @@ class Crawler(object):
         else:
             if(url not in Plinks_L):
                 Plinks_L.append(url)              
-                #write to log file for debug porpeses
+                #write to log file for debug proposes
                 try:
                     with open(log_path + 'report_Plinks_L_list.txt', 'a') as f:
                         f.write('depth level: %s --- %s\n' %(depth_level, url))
                 except UnicodeEncodeError as e:              
-                   logging.info('failed to add entry to "report_Plinks_L_list" log')
+                    logging.info('failed to add entry to "report_Plinks_L_list" log')
             else:
                 logging.debug('url already in Plinks_L: ' + url )
                 return
@@ -164,12 +166,12 @@ class Crawler(object):
             lock.release()
 
         if(dom is None):
-            logging.debug('dom is none')
+            logging.debug('DOM is none')
             return
         
         links = dom.cssselect('a')
 
-        #retrive images from the page and store in queue to be proccessed
+        #retrieve images from the page and store in queue to be processed
         self.GetImages(dom)
         
         for link in links:
@@ -202,9 +204,9 @@ class Crawler(object):
             except ValueError:
                 Ulinks_Q.put((absUrl, depth_level))
             else:
-               lock.acquire()
-               dup_links +=1
-               lock.release()
+                lock.acquire()
+                dup_links +=1
+                lock.release()
                 
 
 
@@ -268,7 +270,7 @@ class ImagAnalizer(object):
                 Pimg_counter +=1
                 lock.release()
         else:
-            logging.error("cant retrive image - " + img)
+            logging.error("can't retrieve image - " + img)
             try:
                 with open(log_path + 'report_error_retrive_img.txt', 'a') as f:
                     f.write(str(img)+'\n')
@@ -299,6 +301,20 @@ class CrawlerWorker(threading.Thread):
                 link = Ulinks_Q.get()
                 link_depth = link[1]
                 
+                #infinite crawling
+                if(crawl_depth == 0):
+                    #check if link in the proccessed list
+                    try:
+                        Plinks_L.index(link[0])
+                    except ValueError:
+                        #parse the next page
+                        self.crawler.retrivePageData(link[0], link_depth+1)
+                               
+                    else:
+                        logging.debug("link already in processed list - " + link[0])   
+                                 
+                continue
+                
                 if(crawl_depth > link_depth):
                     #check if link in the proccessed list
                     try:
@@ -308,7 +324,7 @@ class CrawlerWorker(threading.Thread):
                         self.crawler.retrivePageData(link[0], link_depth+1)
                                
                     else:
-                        logging.debug("link already in proccessed list - " + link[0])
+                        logging.debug("link already in processed list - " + link[0])
                 else:
                     pass
 
@@ -345,7 +361,7 @@ class ImagAnalizerWorker(threading.Thread):
                     except ValueError:
                         self.ImagAnalizer.analize(img)
                     else:
-                        logging.info("image already in proccessed list - " +img)
+                        logging.info("image already in processed list - " +img)
                 else:
                     print('\n\n\nnone value in Uimg_Q\n\n\n')
             else:
@@ -384,7 +400,7 @@ class StatsDisplyWorker(threading.Thread):
 
     def stop(self):
         self.flag = False
-        logging.info('stats thread stoped')
+        logging.info('stats thread stopped')
 
 
 class kbControll(threading.Thread):
@@ -406,6 +422,22 @@ class kbControll(threading.Thread):
     def exit(self):
         os._exit(1)
 
+
+
+def postStats():
+    
+    print('Completed at ' + strftime('%a, %d %b %Y %H:%M:%S') + "\ntook: " + '%.2f' % (time.time() - start_time) + " seconds")
+    
+    print('\n\n\n-----stats-final-----')
+    print('\nPimg_counter: ' + str(Pimg_counter))
+    print('\ncrawled links: ' + str(Plink_counter))
+    print('\nhits: ' + str(ImgHit_counter))
+    print('\nPlinks_L: ' + str(len(Plinks_L)))
+    print('\nimg added: ' + str(img_added))
+    print('\ndup_links: ' + str(dup_links))
+    print('\ndup_images: ' + str(dup_images))
+    print ('\nUlinks_Q: ', Ulinks_Q.qsize())
+    print('\n--------------------------\n')
 #python C:\Users\Urban\Documents\Projects\Python\mpwc\webc.py -u http://www.ynet.co.il -t 4
 #start kbControll thread
 kbC = kbControll()
@@ -420,9 +452,12 @@ statDisplyThread.start()
 
 #insert the root url into the queue
 c = Crawler()
-#retrive page date from lvl 0
-c.retrivePageData(args['u'],1)
+#retrieve page date from lvl 0
+c.retrivePageData(args['u'],0)
 
+if(crawl_depth is None):
+    postStats()
+    sys.exit()
 
 
 for i in range(thread_count):
@@ -437,7 +472,7 @@ for i in range(thread_count):
 for i in range(thread_count):
     img_thread = ImagAnalizerWorker()
     ImgThread_holder.append(img_thread)
-   # img_thread.setDaemon(True)
+    #img_thread.setDaemon(True)
     img_thread.start()
 
 
@@ -445,23 +480,12 @@ for i in range(thread_count):
 for thread in LinkThread_holder:
     thread.join()
 
-#wait for the ceawler to finish then analize the images collected
+#wait for the crawler to finish then analyze the images collected
 for thread in ImgThread_holder:
     thread.join()
 
 
-print('Completed at ' + strftime('%a, %d %b %Y %H:%M:%S') + "\ntook: " + '%.2f' % (time.time() - start_time) + " seconds")
 
-print('\n\n\n-----stats-final-----')
-print('\nPimg_counter: ' + str(Pimg_counter))
-print('\ncrawled links: ' + str(Plink_counter))
-print('\nhits: ' + str(ImgHit_counter))
-print('\nPlinks_L: ' + str(len(Plinks_L)))
-print('\nimg added: ' + str(img_added))
-print('\ndup_links: ' + str(dup_links))
-print('\ndup_images: ' + str(dup_images))
-print ('\nUlinks_Q: ', Ulinks_Q.qsize())
-print('\n--------------------------\n')
 
 
 #print('\n\n\nlinks: ' + str(Plink_counter),'\nimages: ' + str(Pimg_counter))
@@ -469,5 +493,5 @@ print('\n--------------------------\n')
 #file = open('C:\\Users\\Urban\\Desktop\\output.txt', mode='w', encoding='utf-8')
 
 #for item in Plinks_L:t
- # file.write("%s\n" % item)
+# file.write("%s\n" % item)
 #file.close()
