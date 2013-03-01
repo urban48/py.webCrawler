@@ -25,9 +25,8 @@ args = vars(parser.parse_args())
 
 
 __name__ = 'webc'
-
 __version__ = '0.1'
-
+__author__ = 'Sergey R. (segrog@gmail.com)'
 
 #thread safe queue that holds the links pending crawling
 Ulinks_Q = queue.Queue()#SetQueue(0)
@@ -44,10 +43,7 @@ Pimg_L = []
 #root url
 init_url = args['u']
 
-#set the depth level
-#if(args['l'] is None):
- #   crawl_depth = 1
-#else:
+#crawl depth
 crawl_depth = args['l']
 
 #list that holds results
@@ -161,9 +157,9 @@ class Crawler(object):
                 logging.debug('url already in Plinks_L: ' + url )
                 return
                
-            lock.acquire()           
-            Plink_counter +=1
-            lock.release()
+            with lock:         
+                Plink_counter +=1
+
 
         if(dom is None):
             logging.debug('DOM is none')
@@ -204,9 +200,9 @@ class Crawler(object):
             except ValueError:
                 Ulinks_Q.put((absUrl, depth_level))
             else:
-                lock.acquire()
-                dup_links +=1
-                lock.release()
+                with lock:
+                    dup_links +=1
+
                 
 
 
@@ -234,13 +230,13 @@ class Crawler(object):
                         Pimg_L.index(absImgUrl)
                 except ValueError:
                     Uimg_Q.put(absImgUrl)
-                    lock.acquire()
-                    img_added +=1
-                    lock.release()
+                    with lock:
+                        img_added +=1
+                    
                 else:
-                    lock.acquire()
-                    dup_images +=1
-                    lock.release()
+                    with lock:
+                        dup_images +=1
+                    
                     try:
                         with open(log_path + 'report_dup_img_list.txt', 'a') as f:
                             f.write(str(absImgUrl)+'\n')
@@ -266,9 +262,9 @@ class ImagAnalizer(object):
             else:
                 imgHexData = str(req.read())
                 Pimg_L.append(img)
-                lock.acquire()
-                Pimg_counter +=1
-                lock.release()
+                with lock:
+                    Pimg_counter +=1
+               
         else:
             logging.error("can't retrieve image - " + img)
             try:
@@ -281,9 +277,9 @@ class ImagAnalizer(object):
         if(imgHexData.find(zip_hex_pat) != -1 or imgHexData.find(rar_hex_pat) != -1):
             ImgHit_L.append(img)
             #access shared resource
-            lock.acquire()
-            ImgHit_counter +=1
-            lock.release()
+            with lock:
+                ImgHit_counter +=1
+            
  
                                                
             
@@ -303,7 +299,7 @@ class CrawlerWorker(threading.Thread):
                 
                 #infinite crawling
                 if(crawl_depth == 0):
-                    #check if link in the proccessed list
+                    #check if link in the processed list
                     try:
                         Plinks_L.index(link[0])
                     except ValueError:
@@ -316,7 +312,7 @@ class CrawlerWorker(threading.Thread):
                 continue
                 
                 if(crawl_depth > link_depth):
-                    #check if link in the proccessed list
+                    #check if link in the processed list
                     try:
                         Plinks_L.index(link[0])
                     except ValueError:
@@ -354,7 +350,7 @@ class ImagAnalizerWorker(threading.Thread):
         while(self.flag):
             if(not Uimg_Q.empty()):
                 img = Uimg_Q.get()
-                #check if img already in the proccessed list
+                #check if img already in the processed list
                 if(img is not None):
                     try:
                         Pimg_L.index(img)
