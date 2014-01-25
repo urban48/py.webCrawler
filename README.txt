@@ -8,6 +8,8 @@ lxml module
 
 usage:
 python webc.py  -u your url(make sure its a full url with - https/http)  -t number of threads -l depth level (optional)
+if depth level is 0 (-l 0) it will continue untill no links will be found - infinite depth level
+
 
 example
 python web.py -u http://www.rootwebsite.com -t 8 -l 5
