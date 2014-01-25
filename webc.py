@@ -11,9 +11,26 @@ import sys
 from time import strftime
 import msvcrt
 from lxml.html import parse
+import curses
+import pdb
 
+#init curses
+stdscr = curses.initscr()
+stdscr.move(0,5)
+curses.noecho()
+curses.cbreak()
+stdscr.keypad(1)
+stdscr.refresh()
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.ERROR)
+
+logger = logging.getLogger("webc")
+logger.setLevel(logging.ERROR)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setLevel(logging.ERROR)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-u',type=str , help='start url', required=True)
@@ -27,6 +44,12 @@ args = vars(parser.parse_args())
 __name__ = 'webc'
 __version__ = '0.1'
 __author__ = 'Sergey R. (segrog@gmail.com)'
+
+
+#app start time constant
+START_TIME = time.time()
+#unique domain list
+Domain_lst = []
 
 #thread safe queue that holds the links pending crawling
 Ulinks_Q = queue.Queue()#SetQueue(0)
@@ -58,9 +81,6 @@ Plink_counter = 0
 #image processed counter
 Pimg_counter = 0
 
-#img hit counter
-ImgHit_counter = 0
-
 thread_count = args['t']
 
 start_time = time.time()
@@ -83,6 +103,8 @@ with open(log_path + 'report_dup_img_list.txt', 'w') as f:
 with open(log_path + 'report_error_retrive_img.txt', 'w') as f:
     f.write('')
 with open(log_path + 'report_Plinks_L_list.txt', 'w') as f:
+    f.write('')
+with open(log_path + 'img_hit.txt', 'w') as f:
     f.write('')
 
 #debug vars
@@ -141,6 +163,12 @@ class Crawler(object):
 
         try:
             dom = parse(url).getroot()
+            #add to unique domain list if dont exist
+            try:
+                Domain_lst.index(dom)
+            except:
+                Domain_lst.append(dom)
+
         except IOError as e:
             logging.error('[Crawler.retrivePageData] cant parse give url - ' + str(e))
             return
@@ -197,7 +225,7 @@ class Crawler(object):
 
             try:
                 Plinks_L.index(absUrl)
-            except ValueError:
+            except:
                 Ulinks_Q.put((absUrl, depth_level))
             else:
                 with lock:
@@ -276,9 +304,10 @@ class ImagAnalizer(object):
                 
         if(imgHexData.find(zip_hex_pat) != -1 or imgHexData.find(rar_hex_pat) != -1):
             ImgHit_L.append(img)
-            #access shared resource
-            with lock:
-                ImgHit_counter +=1
+            with open(log_path + 'img_hit.txt', 'w') as f:
+                f.write('')
+
+
             
  
                                                
@@ -302,7 +331,7 @@ class CrawlerWorker(threading.Thread):
                     #check if link in the processed list
                     try:
                         Plinks_L.index(link[0])
-                    except ValueError:
+                    except:
                         #parse the next page
                         self.crawler.retrivePageData(link[0], link_depth+1)
                                
@@ -379,8 +408,23 @@ class StatsDisplyWorker(threading.Thread):
         self.flag = True
         
     def run(self):
-        global Pimg_counter, Plink_counter
+        global Pimg_counter, Plink_counter, Domain_lst
         while(self.flag):
+
+            stdscr.addstr(0,0 , "Ellapsed: %.1f seconds" %(time.time() - START_TIME))
+            stdscr.addstr(3,0 , "Proceed Links : %s" %(Plink_counter))
+            stdscr.addstr(4,0 , "Proceed Images : %s" %(Pimg_counter))
+            stdscr.addstr(5,0 , "Unique domains : %s" %(len(Domain_lst)))
+            stdscr.addstr(6,0 , "links in queue : %s" %(Ulinks_Q.qsize()))
+            stdscr.addstr(7,0 , "images in queue : %s" %(img_added))
+            stdscr.addstr(8,0 , "duplicate links  : %s" %(dup_links))
+            stdscr.addstr(9,0 , "duplicate images  : %s" %(dup_images))
+            stdscr.addstr(12,0 , "hits  : %s" %(len(ImgHit_L)))
+
+            stdscr.refresh()
+
+
+            '''
             print('\n--------stats----------')
             print('\nPimg_counter: ' + str(Pimg_counter))
             print('\nPlink_counter: ' + str(Plink_counter))
@@ -391,7 +435,7 @@ class StatsDisplyWorker(threading.Thread):
             print ('\nUlinks_Q: ', Ulinks_Q.qsize())
             print('\n-----------------------\n')
             time.sleep(10)
-            
+            '''
 
 
     def stop(self):
@@ -419,9 +463,9 @@ class kbControll(threading.Thread):
         os._exit(1)
 
 
-
+'''
 def postStats():
-    
+    curses.endwin()
     print('Completed at ' + strftime('%a, %d %b %Y %H:%M:%S') + "\ntook: " + '%.2f' % (time.time() - start_time) + " seconds")
     
     print('\n\n\n-----stats-final-----')
@@ -434,7 +478,9 @@ def postStats():
     print('\ndup_images: ' + str(dup_images))
     print ('\nUlinks_Q: ', Ulinks_Q.qsize())
     print('\n--------------------------\n')
-#python C:\Users\Urban\Documents\Projects\Python\mpwc\webc.py -u http://www.ynet.co.il -t 4
+'''
+#python wbce.py -u http://www.ynet.co.il -t 4
+
 #start kbControll thread
 kbC = kbControll()
 kbC.setDaemon(True)
@@ -448,11 +494,12 @@ statDisplyThread.start()
 
 #insert the root url into the queue
 c = Crawler()
+
 #retrieve page date from lvl 0
 c.retrivePageData(args['u'],0)
 
 if(crawl_depth is None):
-    postStats()
+    #postStats()
     sys.exit()
 
 
@@ -464,7 +511,6 @@ for i in range(thread_count):
     
 
 
-
 for i in range(thread_count):
     img_thread = ImagAnalizerWorker()
     ImgThread_holder.append(img_thread)
@@ -472,11 +518,10 @@ for i in range(thread_count):
     img_thread.start()
 
 
-#first crawl all over the site and collect the data
+
 for thread in LinkThread_holder:
     thread.join()
 
-#wait for the crawler to finish then analyze the images collected
 for thread in ImgThread_holder:
     thread.join()
 
